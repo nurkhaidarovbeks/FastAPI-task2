@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from security import get_password_hash, verify_password
 from fastapi.security import OAuth2PasswordRequestForm
 from auth import create_access__token
+from dependencies import get_current_user
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -37,3 +38,10 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), session: Session = D
 
     access_token = create_access__token(data={"sub": user.username})
     return {"access_token": access_token, "token_type": "bearer"}
+
+@app.get("/users/me")
+async def read_users_me(current_user: User = Depends(get_current_user)):
+    return {
+        "id": current_user.id,
+        "username": current_user.username
+    }
