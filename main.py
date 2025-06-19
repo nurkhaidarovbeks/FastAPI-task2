@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Response
+from fastapi import FastAPI, Depends, HTTPException, status, Response, Query
 from sqlmodel import Session, select
 from models import User, Note
 from schemas import NoteOut, NoteCreate, NoteUpdate, UserCreate, UserLogin
@@ -65,9 +65,19 @@ def create_note(note_data: NoteCreate, session: Session = Depends(get_session),
     return note
 
 
-@app.post("/notes", response_model=list[NoteOut])
-def get_my_notes(session: Session = Depends(get_session), current_user: User = Depends(get_current_user)):
-    notes = session.exec(select(Note).where(Note.owner_id == current_user.id)).all()
+@app.get("/notes", response_model=list[NoteOut])
+def get_my_notes(skip: int = Query(0, ge=0),
+                 limit: int = Query(100, le=1000),
+                 search: str | None = None,
+                 session: Session = Depends(get_session),
+                 current_user: User = Depends(get_current_user)):
+
+    query = select(Note).where(Note.owner_id == current_user.id)
+
+    if search:
+        query = query.where(Note.text.ilike(f"%{search}%"))
+    query = query.offset(skip).limit(limit)
+    notes = session.exec(query).all()
     return notes
 
 
