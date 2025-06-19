@@ -1,13 +1,13 @@
 from fastapi import FastAPI, Depends, HTTPException, status, Response
 from sqlmodel import Session, select
-from models import User
-from schemas import UserLogin, UserCreate
+from models import User, Note
+from schemas import NoteOut, NoteCreate, NoteUpdate, UserCreate, UserLogin
 from database import create_db_and_tables, get_session
+from auth import create_access__token
 from contextlib import asynccontextmanager
+from dependencies import get_current_user, require_role
 from security import get_password_hash, verify_password
 from fastapi.security import OAuth2PasswordRequestForm
-from auth import create_access__token
-from dependencies import get_current_user, require_role
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -54,3 +54,48 @@ async def read_users_me(current_user: User = Depends(get_current_user)):
 def list_all_users(current_user: User = require_role("admin"), session: Session = Depends(get_session)):
     users = session.exec(select(User)).all()
     return [{"id": u.id, "username": u.username, "role": u.role} for u in users]
+
+@app.post("/notes", response_model=NoteOut)
+def create_note(note_data: NoteCreate, session: Session = Depends(get_session),
+                current_user: User = Depends(get_current_user)):
+    note = Note(text=note_data.text, owner_id=current_user.id)
+    session.add(note)
+    session.commit()
+    session.refresh(note)
+    return note
+
+
+@app.post("/notes", response_model=list[NoteOut])
+def get_my_notes(session: Session = Depends(get_session), current_user: User = Depends(get_current_user)):
+    notes = session.exec(select(Note).where(Note.owner_id == current_user.id)).all()
+    return notes
+
+
+@app.get("/notes/{note_id}", response_model=NoteOut)
+def get_note(note_id: int, session: Session = Depends(get_session),
+             current_user: User = Depends(get_current_user)):
+    note = session.get(Note, note_id)
+    if not note or note.owner_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Note not found")
+    return note
+
+@app.put("/notes/{note_id}", response_model=NoteOut)
+def update_note(note_id: int, note_update: NoteUpdate, session: Session = Depends(get_session), current_user: User = Depends(get_current_user)):
+    note = session.get(Note, note_id)
+    if not note or note.owner_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Note not found")
+    if note_update.text is not None:
+        note.text = note_update.text
+    session.add(note)
+    session.commit()
+    session.refresh(note)
+    return note
+
+@app.delete("/notes/{note_id}")
+def delete_note(note_id: int, session: Session = Depends(get_session), current_user: User = Depends(get_current_user)):
+    note = session.get(Note, note_id)
+    if not note or note.owner_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Note not found")
+    session.delete(note)
+    session.commit()
+    return {"detail": "Note deleted"}
