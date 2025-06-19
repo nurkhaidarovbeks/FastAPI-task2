@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from security import get_password_hash, verify_password
 from fastapi.security import OAuth2PasswordRequestForm
 from auth import create_access__token
-from dependencies import get_current_user
+from dependencies import get_current_user, require_role
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -23,7 +23,11 @@ def register(user_data: UserCreate, session: Session = Depends(get_session)):
         raise HTTPException(status_code=400, detail="Username already exists")
 
     hashed_password = get_password_hash(user_data.password)
-    new_user = User(username=user_data.username, password=hashed_password)
+    new_user = User(
+        username=user_data.username,
+        password=hashed_password,
+        role="user"
+    )
 
     session.add(new_user)
     session.commit()
@@ -45,3 +49,8 @@ async def read_users_me(current_user: User = Depends(get_current_user)):
         "id": current_user.id,
         "username": current_user.username
     }
+
+@app.get("/admin/users")
+def list_all_users(current_user: User = require_role("admin"), session: Session = Depends(get_session)):
+    users = session.exec(select(User)).all()
+    return [{"id": u.id, "username": u.username, "role": u.role} for u in users]

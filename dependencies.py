@@ -22,6 +22,15 @@ def decode_token(token: str):
 async def get_current_user(token: str = Depends(oauth2_scheme), session: Session = Depends(get_session)) -> User:
     username = decode_token(token)
     user = session.exec(select(User).where(User.username == username)).first()
+    print(user.username)
+    print(user.role)
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
     return user
+
+def require_role(required_role: str):
+    def role_checker(current_user: User = Depends(get_current_user)):
+        if current_user.role != required_role:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+        return current_user
+    return Depends(role_checker)
