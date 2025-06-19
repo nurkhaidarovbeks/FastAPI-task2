@@ -4,6 +4,7 @@ from models import User
 from schemas import UserLogin, UserCreate
 from database import create_db_and_tables, get_session
 from contextlib import asynccontextmanager
+from security import get_password_hash, verify_password
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -14,11 +15,13 @@ app = FastAPI(lifespan=lifespan)
 
 @app.post("/register")
 def register(user_data: UserCreate, session: Session = Depends(get_session)):
-    existing_user = session.exec(select(User).where(User.username == user_data.usЫername)).first()
+    existing_user = session.exec(select(User).where(User.username == user_data.username)).first()
     if existing_user:
         raise HTTPException(status_code=400, detail="Username already exists")
 
-    new_user = User(username=user_data.username, password=user_data.password)
+    hashed_password = get_password_hash(user_data.password)
+    new_user = User(username=user_data.username, password=hashed_password)
+
     session.add(new_user)
     session.commit()
     session.refresh(new_user)
@@ -29,7 +32,7 @@ def login(user_data: UserLogin, session: Session = Depends(get_session)):
     user = session.exec(select(User).where(User.username == user_data.username)).first()
     if not user:
         raise HTTPException(status_code=401, detail="Invalid username or password")
-    if user.password != user_data.password:
+    if not verify_password(user_data.password, user.password):
         raise HTTPException(status_code=401, detail="Invalid username or password")
 
     return {"message": "Login successful", "username": user.username}
