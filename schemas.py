@@ -1,6 +1,7 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional
 from datetime import datetime
+
 
 class UserCreate(BaseModel):
     username: str
@@ -20,6 +21,4 @@ class NoteOut(BaseModel):
     id: int
     text: str
     created_at: datetime
-
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
