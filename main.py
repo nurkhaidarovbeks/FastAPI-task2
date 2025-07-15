@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Response, Query
+from fastapi import FastAPI, Depends, HTTPException, status, Response, Query, WebSocket, WebSocketDisconnect
 from sqlmodel import Session, select
 from models import User, Note
 from schemas import NoteOut, NoteCreate, NoteUpdate, UserCreate, UserLogin
@@ -9,6 +9,7 @@ from dependencies import get_current_user, require_role
 from security import get_password_hash, verify_password
 from fastapi.security import OAuth2PasswordRequestForm
 from tasks import send_mock_email
+from typing import List
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -16,6 +17,35 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(lifespan=lifespan)
+
+
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.remove(websocket)
+
+    async def broadcast(self, message: str):
+        for connection in self.active_connections:
+            await connection.send_text(message)
+
+
+manager = ConnectionManager()
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await manager.connect(websocket)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            await manager.broadcast(f"Message from client: {data}")
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
 
 @app.post("/register")
 def register(user_data: UserCreate, session: Session = Depends(get_session)):
