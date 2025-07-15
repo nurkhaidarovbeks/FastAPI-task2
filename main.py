@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 from dependencies import get_current_user, require_role
 from security import get_password_hash, verify_password
 from fastapi.security import OAuth2PasswordRequestForm
+from tasks import send_mock_email
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -109,3 +110,9 @@ def delete_note(note_id: int, session: Session = Depends(get_session), current_u
     session.delete(note)
     session.commit()
     return {"detail": "Note deleted"}
+
+
+@app.post("/trigger-task")
+def trigger_task():
+    send_mock_email.delay("user@example")
+    return {"message": "Task started"}
