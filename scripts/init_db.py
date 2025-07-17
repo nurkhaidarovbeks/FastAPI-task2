@@ -2,7 +2,7 @@ import os
 import sys
 
 # Добавляем корень проекта в путь (на уровень выше scripts/)
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(file), '..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from sqlmodel import SQLModel, create_engine
 from models import *  # теперь должно работать
