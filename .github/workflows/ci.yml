@@ -50,11 +50,14 @@ jobs:
           sleep 10
 
       - name: Create DB tables
-        run: python -c "from database import create_db_and_tables; create_db_and_tables()"
+        env:
+          DATABASE_URL: postgresql+psycopg2://postgres:Asdqwe!23@postgres:5432/fastapi_users
+        run: |
+          python -c "from database import create_db_and_tables; create_db_and_tables()"
 
       - name: Run tests
         env:
-          DATABASE_URL: sqlite:///./test.db
+          DATABASE_URL: postgresql+psycopg2://postgres:Asdqwe!23@postgres:5432/fastapi_users
           REDIS_HOST: localhost
           REDIS_PORT: 6379
           SECRET_KEY: your-super-secret-key
