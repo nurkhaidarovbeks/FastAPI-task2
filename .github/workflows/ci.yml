@@ -44,17 +44,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Wait until PostgreSQL is ready
+      - name: Wait for PostgreSQL to be ready
         run: |
-          until pg_isready -h postgres -p 5432; do
-            echo "Waiting for PostgreSQL..."
-            sleep 2
-          done
+          echo "Waiting 15 seconds for PostgreSQL to be ready..."
+          sleep 15
 
       - name: Create DB tables
         env:
           DATABASE_URL: postgresql+psycopg2://postgres:Asdqwe!23@postgres:5432/fastapi_users
-        run: python scripts/init_db.py
+        run: |
+          python scripts/init_db.py
 
       - name: Run tests
         env:
