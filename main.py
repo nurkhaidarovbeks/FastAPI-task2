@@ -1,4 +1,5 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Response, Query, WebSocket, WebSocketDisconnect
+import json
+from fastapi import FastAPI, Depends, HTTPException, status, Response, Query, WebSocket, WebSocketDisconnect, APIRouter
 from sqlmodel import Session, select
 from models import User, Note
 from schemas import NoteOut, NoteCreate, NoteUpdate, UserCreate, UserLogin
@@ -10,14 +11,18 @@ from security import get_password_hash, verify_password
 from fastapi.security import OAuth2PasswordRequestForm
 from tasks import send_mock_email
 from typing import List
+from redis import startup as redis_startup, shutdown as redis_shutdown, get_redis
+
+router = APIRouter()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    await redis_startup()
     create_db_and_tables()
     yield
+    await redis_shutdown()
 
 app = FastAPI(lifespan=lifespan)
-
 
 class ConnectionManager:
     def __init__(self):
@@ -87,30 +92,37 @@ def list_all_users(current_user: User = require_role("admin"), session: Session 
     return [{"id": u.id, "username": u.username, "role": u.role} for u in users]
 
 @app.post("/notes", response_model=NoteOut)
-def create_note(note_data: NoteCreate, session: Session = Depends(get_session),
-                current_user: User = Depends(get_current_user)):
+async def create_note(note_data: NoteCreate, session: Session = Depends(get_session),
+                current_user: User = Depends(get_current_user),
+                redis = Depends(get_redis)):
     note = Note(text=note_data.text, owner_id=current_user.id)
     session.add(note)
     session.commit()
     session.refresh(note)
+    keys = await redis.keys(f"notes:{current_user.id}:*")
+    if keys:
+        await redis.delete(*keys)
     return note
 
-
 @app.get("/notes", response_model=list[NoteOut])
-def get_my_notes(skip: int = Query(0, ge=0),
-                 limit: int = Query(100, le=1000),
-                 search: str | None = None,
-                 session: Session = Depends(get_session),
-                 current_user: User = Depends(get_current_user)):
+async def get_my_notes(skip: int = 0,
+                       limit: int = 100,
+                       search: str | None = None,
+                       session: Session = Depends(get_session),
+                       current_user: User = Depends(get_current_user),
+                       redis=Depends(get_redis)):
 
+    cache_key = f"notes:{current_user.id}:{skip}:{limit}:{search or ''}"
+    cached_data = await redis.get(cache_key)
+    if cached_data:
+        return json.loads(cached_data)
     query = select(Note).where(Note.owner_id == current_user.id)
-
     if search:
         query = query.where(Note.text.ilike(f"%{search}%"))
     query = query.offset(skip).limit(limit)
     notes = session.exec(query).all()
+    await redis.set(cache_key, json.dumps([note.dict() for note in notes]), ex=300)
     return notes
-
 
 @app.get("/notes/{note_id}", response_model=NoteOut)
 def get_note(note_id: int, session: Session = Depends(get_session),
@@ -121,7 +133,9 @@ def get_note(note_id: int, session: Session = Depends(get_session),
     return note
 
 @app.put("/notes/{note_id}", response_model=NoteOut)
-def update_note(note_id: int, note_update: NoteUpdate, session: Session = Depends(get_session), current_user: User = Depends(get_current_user)):
+async def update_note(note_id: int, note_update: NoteUpdate, session: Session = Depends(get_session),
+                current_user: User = Depends(get_current_user),
+                redis = Depends(get_redis)):
     note = session.get(Note, note_id)
     if not note or note.owner_id != current_user.id:
         raise HTTPException(status_code=404, detail="Note not found")
@@ -130,15 +144,26 @@ def update_note(note_id: int, note_update: NoteUpdate, session: Session = Depend
     session.add(note)
     session.commit()
     session.refresh(note)
+    keys = await redis.keys(f"notes:{current_user.id}:*")
+    if keys:
+        await redis.delete(*keys)
+
     return note
 
 @app.delete("/notes/{note_id}")
-def delete_note(note_id: int, session: Session = Depends(get_session), current_user: User = Depends(get_current_user)):
+async def delete_note(note_id: int, session: Session = Depends(get_session),
+                      current_user: User = Depends(get_current_user),
+                      redis = Depends(get_redis)):
     note = session.get(Note, note_id)
     if not note or note.owner_id != current_user.id:
         raise HTTPException(status_code=404, detail="Note not found")
     session.delete(note)
     session.commit()
+
+    keys = await redis.keys(f"notes:{current_user.id}:*")
+    if keys:
+        await redis.delete(*keys)
+
     return {"detail": "Note deleted"}
 
 
