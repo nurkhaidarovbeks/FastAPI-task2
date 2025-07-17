@@ -1,9 +1,9 @@
 import os
 from sqlmodel import SQLModel, create_engine, Session
 from typing import Generator
+from config import settings
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@db:5432/fastapi_users")
-engine = create_engine(DATABASE_URL, echo=True)
+engine = create_engine(settings.database_url)
 
 def create_db_and_tables():
     SQLModel.metadata.create_all(engine)
