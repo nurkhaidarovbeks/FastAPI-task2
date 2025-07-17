@@ -11,7 +11,7 @@ from security import get_password_hash, verify_password
 from fastapi.security import OAuth2PasswordRequestForm
 from tasks import send_mock_email
 from typing import List
-from redis import startup as redis_startup, shutdown as redis_shutdown, get_redis
+from redis_utils import startup as redis_startup, shutdown as redis_shutdown, get_redis
 
 router = APIRouter()
 
